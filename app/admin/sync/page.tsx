@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { parseJsonResponse } from "@/lib/fetch-json";
 
@@ -9,6 +9,48 @@ export default function AdminSyncPage() {
   const [result, setResult] = useState<{ ok?: boolean; products?: number; error?: string } | null>(null);
   const [adminSecret, setAdminSecret] = useState("");
   const [syncSecret, setSyncSecret] = useState("");
+  const [autoBackfillDone, setAutoBackfillDone] = useState(false);
+  const autoBackfillStarted = useRef(false);
+
+  // When there are no products, run a full sync once so all (old + new) products appear
+  useEffect(() => {
+    if (autoBackfillStarted.current) return;
+    autoBackfillStarted.current = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/shopify/product-count", { credentials: "include" });
+        const data = await parseJsonResponse<{ count?: number }>(res);
+        const count = typeof data.count === "number" ? data.count : 0;
+        if (count > 0) {
+          setAutoBackfillDone(true);
+          return;
+        }
+        setLoading(true);
+        setResult(null);
+        const headers: Record<string, string> = {};
+        if (syncSecret.trim()) headers["x-sync-secret"] = syncSecret.trim();
+        else if (adminSecret.trim()) headers["x-admin-key"] = adminSecret.trim();
+        // Prefer Storefront (no 403); fallback to Admin API
+        let syncRes = await fetch("/api/shopify/sync-storefront", { method: "POST", credentials: "include", headers });
+        let syncData = await parseJsonResponse<{ error?: string; products?: number }>(syncRes);
+        if (!syncRes.ok && (syncRes.status === 400 || syncData.error?.includes("Storefront"))) {
+          syncRes = await fetch("/api/shopify/sync", { method: "POST", credentials: "include", headers });
+          syncData = await parseJsonResponse<{ error?: string; products?: number }>(syncRes);
+        }
+        if (!syncRes.ok) {
+          setResult({ error: syncData.error ?? "Sync failed" });
+          setAutoBackfillDone(true);
+          return;
+        }
+        setResult({ ok: true, products: syncData.products });
+      } catch {
+        // Ignore: user may not be logged in; they can sync manually
+      } finally {
+        setLoading(false);
+        setAutoBackfillDone(true);
+      }
+    })();
+  }, []);
 
   const runSync = async (useStorefront: boolean) => {
     setLoading(true);
@@ -42,6 +84,14 @@ export default function AdminSyncPage() {
         <Link href="/admin/orders" style={{ color: "#0066cc" }}>← Orders</Link>
       </p>
       <h1 style={{ marginBottom: "0.5rem" }}>Sync from Shopify</h1>
+      <p style={{ color: "#2563eb", fontSize: "0.875rem", marginBottom: "0.75rem", padding: "0.5rem", background: "#eff6ff", borderRadius: 4 }}>
+        <strong>All products (new + old):</strong> The first time you open this page with no products in the database, a full sync runs automatically so all existing Shopify products appear. With webhooks set up, new and updated products then stay in sync. Use the buttons below to sync again anytime.
+      </p>
+      {loading && !result && (
+        <p style={{ color: "#0d9488", fontSize: "0.875rem", marginBottom: "1rem" }}>
+          Loading all products from Shopify for the first time…
+        </p>
+      )}
       <p style={{ color: "#666", fontSize: "0.875rem", marginBottom: "1.5rem" }}>
         Pull all products, variants, and inventory levels from your Shopify store into Supabase.
         Set <code>SHOPIFY_SHOP_DOMAIN</code>, <code>SHOPIFY_LOCATION_ID</code>, and either <code>SHOPIFY_ACCESS_TOKEN</code> or <code>SHOPIFY_CLIENT_ID</code> + <code>SHOPIFY_CLIENT_SECRET</code> in your env.

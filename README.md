@@ -4,10 +4,11 @@ Full Next.js 14 (App Router) TypeScript app with Supabase Postgres + Realtime. S
 
 ## Features
 
-- **Shopify sync**: Products, variants, and inventory levels synced to Supabase (full sync API + webhooks).
+- **Shopify sync**: Products, variants, and **inventory levels** synced to Supabase (full sync API + webhooks). Inventory stays in sync via the **Inventory level update** webhook.
 - **Inventory reservations**: `available = on_hand (Shopify) - reserved (active reservations)` to prevent overselling.
 - **Checkout**: Paymob (card via iFrame) and COD. Paymob init creates order + reservations and returns iframe URL; Paymob webhook verifies HMAC, marks order paid, commits reservations, and decrements Shopify inventory.
 - **COD**: Creates order and commits reservations immediately, then decrements Shopify inventory.
+- **Adjust Shopify when order appears**: When an order is confirmed (COD placed, Paymob paid, or admin sets status to **Paid** / **COD confirmed**), the app decrements inventory in Shopify so your Shopify stock stays correct. Requires **SHOPIFY_ACCESS_TOKEN** (Admin API).
 - **Admin dashboard**: `/admin/orders` and `/admin/orders/[id]` with Supabase Realtime so new/updated orders appear instantly.
 - **Admin auth**: Cookie-based login with `ADMIN_SECRET`, or Supabase Auth + `admin_users` table.
 - **Shopify webhooks**: `inventory_levels/update` and `products/update` with HMAC verification and dedupe (`webhook_events`).
@@ -42,7 +43,35 @@ Copy `.env.local.example` to `.env.local` and set:
 - `NEXT_PUBLIC_APP_URL` (e.g. `https://your-app.com`)
 - `ADMIN_SECRET` (for admin login and job endpoints)
 
-### 3. Sync products and inventory from Shopify
+### 3. Sync from Shopify into Supabase (fix 403)
+
+The 403 error happens when using **only** Client ID + Secret (Shopify blocks the token request). To sync from Shopify into Supabase you need **one** of these:
+
+| Method | What to set on Vercel | Then |
+|--------|------------------------|------|
+| **Admin API** | `SHOPIFY_ACCESS_TOKEN` = your **Admin API access token** (starts with `shpat_`) from Shopify → your app → API credentials | On the deployed site open **Admin → Sync** and click **Sync via Admin API**. |
+| **Storefront API** | `SHOPIFY_STOREFRONT_ACCESS_TOKEN` = **Storefront API access token** from the same app → API credentials (different from Admin token) | On the deployed site open **Admin → Sync** and click **Sync via Storefront API**. |
+| **Webhooks** | `SHOPIFY_WEBHOOK_SECRET` = webhook signing secret from Shopify. In Shopify add webhooks (see table below) pointing to your app URL. | Every time you create/update a product or inventory in Shopify, Shopify sends data to your app and we write to Supabase automatically. |
+
+**Do this on Vercel:**  
+1. Open your project → **Settings** → **Environment Variables**.  
+2. Add **SHOPIFY_ACCESS_TOKEN** with the Admin API token from Shopify (same app you use for the store).  
+   - Get it: **Shopify Admin** → **Settings** → **Apps and sales channels** → **Develop apps** → your app → **API credentials** → **Admin API access token** → copy.  
+3. Or add **SHOPIFY_STOREFRONT_ACCESS_TOKEN** with the **Storefront API access token** from the same page (different field).  
+4. Redeploy. Then on **https://your-app.vercel.app/admin/sync** use the sync button that matches the token you set.  
+
+**Webhooks (automatic sync – no Sync button needed):**  
+With these three webhooks, **all products appear automatically in Admin**. In Shopify → **Settings** → **Notifications** → **Webhooks**, add:
+
+| Event | Callback URL |
+|-------|--------------|
+| **Product creation** | `https://YOUR-VERCEL-URL/api/webhooks/shopify/products-create` |
+| Product update | `https://YOUR-VERCEL-URL/api/webhooks/shopify/products-update` |
+| Inventory level update | `https://YOUR-VERCEL-URL/api/webhooks/shopify/inventory-levels-update` |
+
+Set the webhook secret in Shopify and add it as `SHOPIFY_WEBHOOK_SECRET` on Vercel. New and updated products and **inventory** sync to Supabase automatically; no manual Sync button needed for ongoing changes. To have the app **adjust Shopify inventory when orders are placed** (COD, Paymob paid, or admin marks order confirmed), set **SHOPIFY_ACCESS_TOKEN** (Admin API) in your env — the app then decrements stock in Shopify for each confirmed order.
+
+---
 
 **Option A – Full sync (one-time or manual)**
 
