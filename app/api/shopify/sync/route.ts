@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { getShopifyLocationId } from "@/lib/shopify";
 import { getShopifyAccessToken, normalizeShopDomain } from "@/lib/shopify-auth";
+import { isStorefrontSyncAvailable, runStorefrontSyncToSupabase } from "@/lib/shopify-storefront";
 import { isAdminRequest } from "@/lib/auth-admin";
 
 const shopDomain = normalizeShopDomain(process.env.SHOPIFY_SHOP_DOMAIN) || process.env.SHOPIFY_SHOP_DOMAIN || "";
@@ -148,6 +149,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, products: products.length });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Sync failed";
+    if (
+      (message.includes("403") || message.toLowerCase().includes("cloudflare")) &&
+      isStorefrontSyncAvailable()
+    ) {
+      try {
+        const result = await runStorefrontSyncToSupabase();
+        return NextResponse.json({
+          ok: true,
+          products: result.products,
+          fallback: "storefront",
+        });
+      } catch (fallbackErr) {
+        const fallbackMsg = fallbackErr instanceof Error ? fallbackErr.message : "Storefront sync failed";
+        console.error("[POST /api/shopify/sync] Storefront fallback failed:", fallbackErr);
+        return NextResponse.json({ error: fallbackMsg }, { status: 500 });
+      }
+    }
     console.error("[POST /api/shopify/sync]", e);
     return NextResponse.json({ error: message }, { status: 500 });
   }
