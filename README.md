@@ -34,9 +34,10 @@ Ensure **Realtime** is enabled for the `orders` table (the migration adds it to 
 Copy `.env.local.example` to `.env.local` and set:
 
 - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
-- **Shopify**: `SHOPIFY_SHOP_DOMAIN`, `SHOPIFY_LOCATION_ID`, `SHOPIFY_WEBHOOK_SECRET`, and **either**:
+- **Shopify**: `SHOPIFY_SHOP_DOMAIN`, `SHOPIFY_LOCATION_ID`, `SHOPIFY_WEBHOOK_SECRET`, and **one of**:
   - **Option A (legacy):** `SHOPIFY_ACCESS_TOKEN` — from an existing custom app (no new legacy apps after Jan 2026), or
-  - **Option B (Dev Dashboard):** `SHOPIFY_CLIENT_ID` + `SHOPIFY_CLIENT_SECRET` — see [Shopify auth (Dev Dashboard)](#shopify-auth-dev-dashboard) below
+  - **Option B (Dev Dashboard):** `SHOPIFY_CLIENT_ID` + `SHOPIFY_CLIENT_SECRET` — see [Shopify auth (Dev Dashboard)](#shopify-auth-dev-dashboard) below, or
+  - **Option C (Storefront API, avoids 403):** `SHOPIFY_STOREFRONT_ACCESS_TOKEN` — from the same app’s API credentials → Storefront API access token (no server-side token exchange, so no Cloudflare 403)
 - `PAYMOB_API_KEY`, `PAYMOB_INTEGRATION_ID`, `PAYMOB_HMAC_SECRET`, `PAYMOB_IFRAME_URL`
 - `NEXT_PUBLIC_APP_URL` (e.g. `https://your-app.com`)
 - `ADMIN_SECRET` (for admin login and job endpoints)
@@ -45,7 +46,7 @@ Copy `.env.local.example` to `.env.local` and set:
 
 **Option A – Full sync (one-time or manual)**
 
-1. In **Admin**, go to **Sync Shopify** (`/admin/sync`) and click **Sync now** (you must be logged in).
+1. In **Admin**, go to **Sync Shopify** (`/admin/sync`). Use **Sync (Admin API)** or **Sync via Storefront API (no 403)** if you set `SHOPIFY_STOREFRONT_ACCESS_TOKEN` (avoids Cloudflare 403). You must be logged in.
 2. Or call the API with admin auth:
    ```bash
    curl -X POST https://your-app.com/api/shopify/sync \
@@ -85,7 +86,7 @@ As of January 2026, new **legacy custom apps** can no longer be created. For new
 
 The app will exchange these for a short-lived access token (24h) and refresh it automatically. If you already have a legacy custom app, keep using `SHOPIFY_ACCESS_TOKEN` and leave the client ID/secret unset.
 
-**If you get 403 "Verifying your connection" (Cloudflare) and you only have Client ID/Secret:** Shopify’s token endpoint often blocks requests from local or home networks. **Workaround:** Deploy this app (e.g. to [Vercel](https://vercel.com)) with the same env vars (`SHOPIFY_SHOP_DOMAIN`, `SHOPIFY_CLIENT_ID`, `SHOPIFY_CLIENT_SECRET`, `SHOPIFY_LOCATION_ID`, Supabase, etc.), then open the **deployed** app → Admin → Sync Shopify and click **Sync now**. The token request from the deployed server usually succeeds. You can keep developing locally; run sync from the deployed URL when needed.
+**If you get 403 "Verifying your connection" (Cloudflare) and you only have Client ID/Secret:** Shopify’s token endpoint often blocks requests from local or home networks. **Reliable fix:** Use **SHOPIFY_ACCESS_TOKEN** instead. In Shopify Admin: **Settings → Apps and sales channels → Develop apps** → your app → **API credentials** → copy **Admin API access token**. Set `SHOPIFY_ACCESS_TOKEN` in env and in Vercel, remove `SHOPIFY_CLIENT_ID` and `SHOPIFY_CLIENT_SECRET`, then redeploy. Sync then uses the token directly (no 403).
 
 ### 4. Paymob
 
