@@ -3,17 +3,22 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { getShopifyLocationId } from "@/lib/shopify";
 import { getShopifyAccessToken, normalizeShopDomain } from "@/lib/shopify-auth";
 import { isStorefrontSyncAvailable, runStorefrontSyncToSupabase } from "@/lib/shopify-storefront";
-import { isAdminRequest } from "@/lib/auth-admin";
+import { isAdminRequest, isSyncSecretRequest } from "@/lib/auth-admin";
 
 const shopDomain = normalizeShopDomain(process.env.SHOPIFY_SHOP_DOMAIN) || process.env.SHOPIFY_SHOP_DOMAIN || "";
-const baseUrl = `https://${shopDomain}/admin/api/2024-01`;
+const API_VERSIONS = ["2024-01", "2023-10"] as const;
+function adminBaseUrl(version: string) {
+  return `https://${shopDomain}/admin/api/${version}`;
+}
+const baseUrl = adminBaseUrl("2024-01");
 
 /**
  * Full sync: fetch all products with variants from Shopify, upsert products + variants,
  * then fetch inventory levels and upsert inventory_levels. Requires admin auth.
  */
 export async function POST(request: NextRequest) {
-  if (!(await isAdminRequest(request))) {
+  const allowed = (await isAdminRequest(request)) || isSyncSecretRequest(request);
+  if (!allowed) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
@@ -36,8 +41,35 @@ export async function POST(request: NextRequest) {
     let url = "/products.json?limit=250";
 
     const token = await getShopifyAccessToken();
+    let resolvedBaseUrl = "";
+    for (const version of API_VERSIONS) {
+      const tryBase = adminBaseUrl(version);
+      const res = await fetch(`${tryBase}${url}`, {
+        headers: { "X-Shopify-Access-Token": token },
+      });
+      if (res.ok) {
+        resolvedBaseUrl = tryBase;
+        const json = await res.json();
+        const list = json.products ?? [];
+        products.push(...list);
+        url = "";
+        const linkHeader = res.headers.get("link");
+        if (linkHeader) {
+          const match = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+          if (match) url = new URL(match[1]).pathname;
+        }
+        break;
+      }
+      if (res.status === 404) continue;
+      throw new Error(`Shopify products: ${res.status}`);
+    }
+    if (!resolvedBaseUrl) {
+      throw new Error(
+        "Shopify products: 404. Check SHOPIFY_SHOP_DOMAIN (e.g. jehus7-x1.myshopify.com). Ensure the app has read_products scope. Or use Sync via Storefront API."
+      );
+    }
     while (url) {
-      const res = await fetch(`${baseUrl}${url}`, {
+      const res = await fetch(`${resolvedBaseUrl}${url}`, {
         headers: { "X-Shopify-Access-Token": token },
       });
       if (!res.ok) throw new Error(`Shopify products: ${res.status}`);
@@ -120,7 +152,7 @@ export async function POST(request: NextRequest) {
     const seen = new Set<string>();
 
     while (invUrl) {
-      const json = await fetch(`${baseUrl}${invUrl}`, {
+      const json = await fetch(`${resolvedBaseUrl}${invUrl}`, {
         headers: { "X-Shopify-Access-Token": token },
       }).then((r) => r.json());
       const levels = json.inventory_levels ?? [];
@@ -149,10 +181,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, products: products.length });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Sync failed";
-    if (
-      (message.includes("403") || message.toLowerCase().includes("cloudflare")) &&
-      isStorefrontSyncAvailable()
-    ) {
+    const tryStorefrontFallback =
+      isStorefrontSyncAvailable() &&
+      (message.includes("403") ||
+        message.toLowerCase().includes("cloudflare") ||
+        message.includes("404"));
+    if (tryStorefrontFallback) {
       try {
         const result = await runStorefrontSyncToSupabase();
         return NextResponse.json({

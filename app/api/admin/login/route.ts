@@ -11,12 +11,13 @@ export async function POST(request: NextRequest) {
   }
 
   const res = NextResponse.json({ ok: true });
+  const isHttps = request.nextUrl?.protocol === "https:";
   res.cookies.set("admin_authorized", "1", {
     httpOnly: true,
     path: "/",
     maxAge: 60 * 60 * 24,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: isHttps,
   });
   return res;
 }

@@ -68,7 +68,16 @@ Set the webhook secret in Shopify to match `SHOPIFY_WEBHOOK_SECRET` in `.env.loc
 - **products/update** keeps products and variants in sync when you change them in Shopify.
 - **inventory_levels/update** keeps stock (`on_hand`) in sync when inventory changes.
 
-**Recommended:** Run a **full sync** once, then rely on **webhooks** so new/updated products and inventory stay in sync automatically.
+**Option C – Scheduled automatic full sync (cron)**
+
+Set `SYNC_SECRET` in your env, then call the cron endpoint on a schedule (e.g. every hour or daily):
+
+- **GET** `https://your-app.com/api/cron/shopify-sync?secret=YOUR_SYNC_SECRET`
+- Or **POST** with header `x-sync-secret: YOUR_SYNC_SECRET`
+
+Use **Vercel Cron** (add to `vercel.json`) or an external service (e.g. [cron-job.org](https://cron-job.org)) to hit this URL. The endpoint runs a full Storefront API sync (requires `SHOPIFY_STOREFRONT_ACCESS_TOKEN`).
+
+**Recommended:** Run a **full sync** once, then use **webhooks** for automatic sync on changes. Optionally add **cron** (Option C) for periodic full sync.
 
 ### Shopify auth (Dev Dashboard)
 

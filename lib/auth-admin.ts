@@ -35,3 +35,10 @@ export async function isAdminRequest(request: NextRequest): Promise<boolean> {
 
   return !!adminRow;
 }
+
+/** Check if request is allowed for sync-only (no login). Use SYNC_SECRET in env and send x-sync-secret header. */
+export function isSyncSecretRequest(request: NextRequest): boolean {
+  const secret = process.env.SYNC_SECRET;
+  if (!secret) return false;
+  return request.headers.get("x-sync-secret") === secret;
+}

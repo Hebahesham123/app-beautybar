@@ -3,7 +3,7 @@ import {
   isStorefrontSyncAvailable,
   runStorefrontSyncToSupabase,
 } from "@/lib/shopify-storefront";
-import { isAdminRequest } from "@/lib/auth-admin";
+import { isAdminRequest, isSyncSecretRequest } from "@/lib/auth-admin";
 
 /**
  * Sync products, variants, and inventory from Shopify using the Storefront API.
@@ -11,7 +11,8 @@ import { isAdminRequest } from "@/lib/auth-admin";
  * Requires admin auth.
  */
 export async function POST(request: NextRequest) {
-  if (!(await isAdminRequest(request))) {
+  const allowed = (await isAdminRequest(request)) || isSyncSecretRequest(request);
+  if (!allowed) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

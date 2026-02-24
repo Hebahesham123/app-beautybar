@@ -93,7 +93,19 @@ export async function fetchStorefrontProducts(): Promise<StorefrontProduct[]> {
 
     if (!res.ok) {
       const text = await res.text();
-      throw new Error(`Storefront API: ${res.status} ${text.slice(0, 200)}`);
+      let errMsg = `Storefront API: ${res.status}`;
+      try {
+        const errJson = JSON.parse(text) as { errors?: unknown; error?: string };
+        if (errJson.errors) errMsg += ` — ${JSON.stringify(errJson.errors).slice(0, 120)}`;
+        else if (errJson.error) errMsg += ` — ${errJson.error}`;
+        else if (text) errMsg += ` — ${text.slice(0, 150)}`;
+      } catch {
+        if (text) errMsg += ` — ${text.slice(0, 150)}`;
+      }
+      if (res.status === 401 || res.status === 403) {
+        errMsg += " Use the Storefront API access token (not the Admin API token). Same app → API credentials → Storefront API access token.";
+      }
+      throw new Error(errMsg);
     }
 
     const json = (await res.json()) as {
