@@ -22,7 +22,9 @@ export default function AdminLoginPage() {
     });
     setLoading(false);
     if (!res.ok) {
-      const data: { error?: string } = await parseJsonResponse<{ error?: string }>(res).catch(() => ({ error: "Login failed" }));
+      const data = await parseJsonResponse<{ error?: string }>(res).catch(
+        (): { error?: string } => ({ error: "Login failed" })
+      );
       setError(data.error ?? "Login failed");
       return;
     }
