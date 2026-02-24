@@ -50,7 +50,7 @@ export default function CheckoutPage() {
         });
         const data = await parseJsonResponse<{ error?: string; order_number?: string }>(res);
         if (!res.ok) throw new Error(data.error ?? "Checkout failed");
-        setSuccess({ order_number: data.order_number });
+        setSuccess({ order_number: data.order_number ?? "" });
         clearCart();
       } else {
         const res = await fetch("/api/checkout/paymob-init", {
@@ -60,7 +60,7 @@ export default function CheckoutPage() {
         });
         const data = await parseJsonResponse<{ error?: string; order_number?: string; iframe_url?: string }>(res);
         if (!res.ok) throw new Error(data.error ?? "Checkout failed");
-        setSuccess({ order_number: data.order_number, iframe_url: data.iframe_url });
+        setSuccess({ order_number: data.order_number ?? "", iframe_url: data.iframe_url });
         clearCart();
       }
     } catch (e) {

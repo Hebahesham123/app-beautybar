@@ -82,7 +82,7 @@ export default function AdminOrderDetailPage() {
       const data = await parseJsonResponse<{ order: Order }>(res);
       setOrder(data.order);
     } else {
-      const err = await parseJsonResponse<{ error?: string }>(res).catch(() => ({}));
+      const err = await parseJsonResponse<{ error?: string }>(res).catch((): { error?: string } => ({ error: "Update failed" }));
       setError(err.error ?? "Update failed");
     }
   };

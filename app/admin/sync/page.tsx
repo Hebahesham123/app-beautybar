@@ -62,7 +62,14 @@ export default function AdminSyncPage() {
       {result && (
         <div style={{ marginTop: "1rem", padding: "0.75rem", background: result.error ? "#fef2f2" : "#f0fdf4", borderRadius: 6 }}>
           {result.error ? (
-            <p style={{ color: "#b91c1c" }}>{result.error}</p>
+            <>
+              <p style={{ color: "#b91c1c" }}>{result.error}</p>
+              {(result.error.includes("403") || result.error.toLowerCase().includes("cloudflare")) && (
+                <p style={{ marginTop: "0.75rem", fontSize: "0.875rem", color: "#92400e" }}>
+                  <strong>Options:</strong> (1) Use <code>SHOPIFY_ACCESS_TOKEN</code> from a legacy custom app in <code>.env.local</code> and restart, or (2) Deploy this app (e.g. Vercel), set the same env vars, and run Sync from the deployed site.
+                </p>
+              )}
+            </>
           ) : (
             <p style={{ color: "#166534" }}>Synced {result.products ?? 0} products. <Link href="/shop">View shop</Link>.</p>
           )}
